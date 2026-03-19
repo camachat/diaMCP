@@ -1,0 +1,9 @@
+services:
+  diamcp:
+    container_name: diamcp
+    build: .
+    volumes:
+      - ./workspace:/workspace
+    ports:
+      - "8000:8000"
+    image: diamcp:latest
