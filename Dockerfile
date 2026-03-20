@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py tools config ./
-
+COPY server.py ./config/ ./
+COPY tools/ ./tools/
 RUN mkdir -p /workspace
 
 ENV PYTHONPATH=/app
