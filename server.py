@@ -3,6 +3,8 @@
 import sys
 import os
 import logging
+import datetime
+import platform
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -29,6 +31,96 @@ mcp = FastMCP(
     stateless_http=True,
     json_response=True,
 )
+
+
+@mcp.resource("diamcp://context/time")
+def get_time_resource() -> str:
+    """Current date and time in ISO format."""
+    return datetime.datetime.now().isoformat()
+
+
+@mcp.resource("diamcp://context/system")
+def get_system_resource() -> str:
+    """System information for context."""
+    info = {
+        "platform": platform.platform(),
+        "python_version": platform.python_version(),
+        "hostname": platform.node(),
+    }
+    return "\n".join(f"{k}: {v}" for k, v in info.items())
+
+
+@mcp.resource("diamcp://workspace/summary")
+def get_workspace_summary() -> str:
+    """Summary of workspace contents."""
+    if not WORKSPACE_DIR.exists():
+        return "Workspace is empty"
+
+    items = []
+    for item in sorted(WORKSPACE_DIR.iterdir())[:20]:
+        suffix = "/" if item.is_dir() else ""
+        items.append(f"{item.name}{suffix}")
+
+    total = sum(1 for _ in WORKSPACE_DIR.rglob("*") if _.is_file())
+    summary = f"Workspace root contents ({total} total files):\n" + "\n".join(items)
+    if total > 20:
+        summary += f"\n... and {total - 20} more files"
+    return summary
+
+
+@mcp.resource("diamcp://tools/list")
+def get_tools_list() -> str:
+    """List of all available tools with descriptions."""
+    tools = ToolRegistry.get_all()
+    lines = ["Available tools:"]
+    for name, tool_def in sorted(tools.items()):
+        lines.append(f"- {name}: {tool_def.description[:60]}")
+    return "\n".join(lines)
+
+
+@mcp.prompt(title="Startup Context")
+def startup_context() -> str:
+    """Get the LLM to call essential tools on startup."""
+    return (
+        "When starting a new task, first call the following tools to understand your environment:\n"
+        "1. get_time - to know the current date/time\n"
+        "2. get_system_info - to understand the system you're running on\n"
+        "Then proceed with the user's request."
+    )
+
+
+@mcp.prompt(title="File Search First")
+def file_search_first() -> str:
+    """Guide for effective file searching."""
+    return (
+        "Before reading files, use search_files or list_directory to understand the project structure. "
+        "Use grep to find specific content across files."
+    )
+
+
+@mcp.prompt(title="Web Research")
+def web_research() -> str:
+    """Guide for web research tasks."""
+    return (
+        "For web research tasks:\n"
+        "1. Use web_search to find relevant pages\n"
+        "2. Use web_fetch to extract content from promising URLs\n"
+        "3. Use calculate for any math needed\n"
+        "4. Summarize findings for the user"
+    )
+
+
+@mcp.prompt(title="Code Review")
+def code_review() -> str:
+    """Guide for reviewing code."""
+    return (
+        "When asked to review code:\n"
+        "1. Use search_files to find relevant code files\n"
+        "2. Use read_file to examine the code\n"
+        "3. Use grep to find specific patterns or issues\n"
+        "4. Use count_lines to understand project size\n"
+        "5. Provide constructive feedback"
+    )
 
 
 def discover_tools_from_dir(tools_dir: Path, source_name: str):
