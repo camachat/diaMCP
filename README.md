@@ -16,14 +16,19 @@ When using llama-server's webui, you want tools without complexity. No servers t
 # Clone or download the project
 cd diamcp
 
-# Start the container
+# Start the MCP server container
 docker compose up --build -d
 
-# In llama.cpp webui MCP settings, add:
-# URL: http://<your-ip>:8000/mcp
+# Start llama-server with MCP proxy enabled
+llama-server --webui-mcp-proxy -m model.gguf -c 32768 --host 0.0.0.0 --port 8080
+
+# In the llama.cpp webui:
+# 1. Go to MCP Settings
+# 2. Toggle "Enable llama-server proxy" ON
+# 3. Add the MCP URL: http://<your-ip>:8000/mcp
 ```
 
-The MCP will immediately be available with all tools.
+The MCP tools will be available in your chat.
 
 ## Demo
 
@@ -188,7 +193,7 @@ diamcp/
 
 - Docker
 - Docker Compose
-- llama.cpp webui with MCP support
+- llama.cpp webui with MCP support (`--webui-mcp-proxy` flag on llama-server)
 
 ## License
 
