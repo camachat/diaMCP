@@ -2,10 +2,85 @@
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 from base import tool
+
+
+DANGEROUS_PATTERNS = [
+    r"rm\s+-rf\s+/",  # rm -rf /
+    r"rm\s+-rf\s+\*",  # rm -rf *
+    r"rm\s+-rf\s+\.",  # rm -rf .
+    r"dd\s+.*of=/dev/sd",  # dd to disk device
+    r"dd\s+.*of=/dev/hd",  # dd to disk device
+    r"dd\s+.*of=/dev/null",  # dd to null (data loss)
+    r"mkfs",  # filesystem creation
+    r"shutdown",  # shutdown
+    r"reboot",  # reboot
+    r"halt",  # halt
+    r"poweroff",  # poweroff
+    r"init\s+0",  # init 0 (halt)
+    r"chmod\s+-R\s+777",  # chmod -R 777
+    r"chmod\s+777",  # chmod 777
+    r"curl.*\|.*sh",  # curl | sh (drive-by install)
+    r"wget.*\|.*sh",  # wget | sh
+    r":\(\)\{",  # Fork bomb
+]
+
+
+class CommandApprovalSchema(BaseModel):
+    confirm: bool = Field(description="Confirm execution of this command")
+    remember: bool = Field(default=False, description="Remember for this session")
+
+
+approved_commands: set[str] = set()
+blacklisted_commands: set[str] = set()
+
+
+def is_command_dangerous(command: str) -> tuple[bool, str]:
+    """Check if command matches dangerous patterns."""
+    cmd_lower = command.lower()
+    for pattern in DANGEROUS_PATTERNS:
+        if re.search(pattern, cmd_lower, re.IGNORECASE):
+            return True, f"Command matches dangerous pattern: {pattern}"
+    if command.strip() in blacklisted_commands:
+        return True, "Command is blacklisted"
+    return False, ""
+
+
+def approve_command(command: str):
+    """Add command to session-approved set."""
+    approved_commands.add(command.strip())
+
+
+def is_command_approved(command: str) -> bool:
+    """Check if command is in approved set."""
+    return command.strip() in approved_commands
+
+
+def blacklist_add(command: str):
+    """Add command to permanent blacklist."""
+    blacklisted_commands.add(command.strip())
+
+
+def blacklist_remove(command: str):
+    """Remove command from permanent blacklist."""
+    blacklisted_commands.discard(command.strip())
+
+
+def get_blacklist() -> set[str]:
+    """Get current blacklist."""
+    return blacklisted_commands.copy()
+
+
+def get_approved() -> set[str]:
+    """Get current approved commands."""
+    return approved_commands.copy()
 
 
 @tool(
@@ -120,7 +195,7 @@ def search_files(pattern: str, path: str = ".") -> str:
 
 @tool(
     name="run_command",
-    description="Execute a shell command in the workspace",
+    description="Execute a shell command in the workspace. Dangerous commands require confirmation.",
     schema={
         "type": "object",
         "properties": {
@@ -133,8 +208,32 @@ def search_files(pattern: str, path: str = ".") -> str:
         "required": ["command"],
     },
 )
-def run_command(command: str, timeout: int = 30) -> str:
-    """Execute a shell command."""
+async def run_command(command: str, timeout: int = 30, ctx=None) -> str:
+    """Execute a shell command with danger checking and optional confirmation."""
+    global approved_commands
+
+    dangerous, reason = is_command_dangerous(command)
+    if dangerous:
+        if is_command_approved(command):
+            pass
+        elif ctx is not None:
+            try:
+                from mcp.server.fastmcp import Context
+
+                if isinstance(ctx, Context):
+                    result = await ctx.elicit(
+                        message=f"⚠️ DANGEROUS COMMAND DETECTED\n\nCommand: `{command}`\n\nReason: {reason}\n\nDo you want to execute this?",
+                        schema=CommandApprovalSchema,
+                    )
+                    if result.action != "accept":
+                        return f"[BLOCKED] Command blocked by user"
+                    if result.data and result.data.remember:
+                        approve_command(command)
+            except Exception:
+                return f"[BLOCKED] Command matches dangerous pattern: {reason}"
+        else:
+            return f"[BLOCKED] Command matches dangerous pattern: {reason}"
+
     try:
         result = subprocess.run(
             command,
@@ -470,6 +569,109 @@ def calculate(expression: str) -> str:
         return f"Error: {e}"
 
 
+@tool(
+    name="manage_blacklist",
+    description="Manage the command blacklist (requires confirmation for dangerous ops)",
+    schema={
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["list", "add", "remove", "clear"],
+                "description": "Action to perform",
+            },
+            "command": {
+                "type": "string",
+                "description": "Command to add or remove from blacklist",
+            },
+        },
+        "required": ["action"],
+    },
+)
+def manage_blacklist(action: str, command: str = "") -> str:
+    """Manage command blacklist."""
+    global blacklisted_commands
+    if action == "list":
+        if not blacklisted_commands:
+            return "Blacklist is empty"
+        return "Blacklisted commands:\n" + "\n".join(
+            f"  - {c}" for c in sorted(blacklisted_commands)
+        )
+    elif action == "add":
+        if not command:
+            return "Error: command required for 'add' action"
+        blacklist_add(command)
+        return f"Added '{command}' to blacklist"
+    elif action == "remove":
+        if not command:
+            return "Error: command required for 'remove' action"
+        if command not in blacklisted_commands:
+            return f"Command '{command}' not in blacklist"
+        blacklist_remove(command)
+        return f"Removed '{command}' from blacklist"
+    elif action == "clear":
+        count = len(blacklisted_commands)
+        blacklisted_commands.clear()
+        return f"Cleared {count} commands from blacklist"
+    return f"Unknown action: {action}"
+
+
+@tool(
+    name="manage_approved",
+    description="Manage session-approved commands",
+    schema={
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["list", "clear"],
+                "description": "Action to perform",
+            },
+        },
+        "required": ["action"],
+    },
+)
+def manage_approved(action: str) -> str:
+    """Manage approved commands for this session."""
+    global approved_commands
+    if action == "list":
+        if not approved_commands:
+            return "No approved commands for this session"
+        return "Approved commands:\n" + "\n".join(
+            f"  - {c}" for c in sorted(approved_commands)
+        )
+    elif action == "clear":
+        count = len(approved_commands)
+        approved_commands.clear()
+        return f"Cleared {count} approved commands"
+    return f"Unknown action: {action}"
+
+
+@tool(
+    name="get_dangerous_patterns",
+    description="Get list of dangerous command patterns that trigger confirmation",
+    schema={
+        "type": "object",
+        "properties": {},
+        "required": [],
+    },
+)
+def get_dangerous_patterns() -> str:
+    """Get dangerous command patterns."""
+    patterns = [
+        "rm -rf /",
+        "rm -rf *",
+        "dd to disk device",
+        "mkfs",
+        "shutdown/reboot/halt",
+        "chmod -R 777",
+        "curl | sh",
+        "wget | sh",
+        "Fork bomb (:(){...})",
+    ]
+    return "Dangerous patterns:\n" + "\n".join(f"  - {p}" for p in patterns)
+
+
 def register_builtin_tools():
     """Register all built-in tools with the registry."""
     from base import ToolRegistry
@@ -489,6 +691,9 @@ def register_builtin_tools():
         grep,
         get_time,
         calculate,
+        manage_blacklist,
+        manage_approved,
+        get_dangerous_patterns,
     ]
 
     for t in builtin_tools:
