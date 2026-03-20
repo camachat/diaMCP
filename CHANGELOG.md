@@ -27,10 +27,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Dangerous command blocking** - `run_command` now blocks dangerous patterns:
+  - All `rm -rf` and `rm -r` commands (any path)
+  - `dd` to disk devices or root
+  - System commands: `shutdown`, `reboot`, `halt`, `poweroff`, `mkfs`, `init 0`
+  - `chmod 777` and `chmod -R 777`
+  - `curl | sh` and `wget | sh` (drive-by installs)
+  - Fork bombs (`:(){...}`)
+  - Path traversal detection (`..` outside workspace)
+  - Redirects to `/etc/passwd`, `/etc/shadow`
+- **Command blacklist management** - `manage_blacklist` tool to add/remove commands
+- **Session approval tracking** - `manage_approved` tool to list/clear approved commands
+- **Dangerous patterns info** - `get_dangerous_patterns` tool shows all blocked patterns
+- **Elicitation support** - Confirmation prompts for dangerous commands (works with MCP clients that support it)
+
 ### Known Issues
 - Custom tools may require LLM to refresh tool list on first load
+- Elicitation prompts do not work with llama.cpp webui (webui lacks MCP elicitation support)
 
 ### Planned
-- Security-hardened `run_command` with blacklist/whitelist
 - Additional web research tools
 - MCP registry integration for easy tool discovery
