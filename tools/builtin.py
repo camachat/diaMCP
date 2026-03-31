@@ -691,6 +691,96 @@ def get_dangerous_patterns() -> str:
     return "Dangerous patterns:\n" + "\n".join(f"  - {p}" for p in patterns)
 
 
+@tool(
+    name="create_tool",
+    description="Create a new MCP tool dynamically. Writes a Python tool file to workspace/tools/ and returns instructions for enabling it.",
+    schema={
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "Tool name (lowercase, underscores, no spaces)",
+                "pattern": "^[a-z][a-z0-9_]*$",
+            },
+            "description": {"type": "string", "description": "What the tool does"},
+            "schema": {
+                "type": "string",
+                "description": 'JSON schema for tool parameters as a string (e.g., \'{"type": "object", "properties": {"input": {"type": "string"}}, "required": ["input"]}\')',
+            },
+            "code": {
+                "type": "string",
+                "description": "Python function body (just the code, not the decorator or def line). The function should be named matching the tool name. Example for a tool named 'greet': 'def greet(name: str) -> str:\\n    return f\"Hello, {name}!\"'",
+            },
+            "requirements": {
+                "type": "string",
+                "description": "Optional. Any new Python package dependencies needed (e.g., 'yfinance>=1.2.0'). If new packages are needed, you MUST tell the user to add them to requirements.txt and run ./restart.sh",
+                "default": "",
+            },
+        },
+        "required": ["name", "description", "schema", "code"],
+    },
+)
+def create_tool(
+    name: str, description: str, schema: str, code: str, requirements: str = ""
+) -> str:
+    """Create a new MCP tool by writing a Python file."""
+    import json
+    import re
+
+    if not re.match(r"^[a-z][a-z0-9_]*$", name):
+        return f"Error: Invalid tool name '{name}'. Use lowercase letters, numbers, and underscores only. Must start with a letter."
+
+    if not description.strip():
+        return "Error: Description cannot be empty"
+
+    try:
+        parsed_schema = json.loads(schema)
+    except json.JSONDecodeError as e:
+        return f"Error: Invalid JSON schema: {e}"
+
+    safe_name = name.strip().lower()
+    filename = f"/workspace/tools/{safe_name}_tool.py"
+
+    try:
+        os.makedirs("/workspace/tools", exist_ok=True)
+
+        file_content = f'''"""Auto-generated tool: {safe_name}"""
+
+from base import tool
+
+@tool(
+    name="{safe_name}",
+    description={json.dumps(description)},
+    schema={json.dumps(parsed_schema, indent=8)}
+)
+{code}
+'''
+        with open(filename, "w") as f:
+            f.write(file_content)
+
+        msg = f"""Tool '{safe_name}' created successfully!
+
+File: {filename}
+"""
+        if requirements:
+            msg += f"""
+IMPORTANT - New dependencies required:
+  Add to requirements.txt: {requirements}
+  Then run: ./restart.sh
+"""
+        else:
+            msg += """
+To enable the tool, restart the MCP server:
+  ./restart.sh
+
+Then verify it's available with the get_tools_list resource (diamcp://tools/list)."""
+
+        return msg
+
+    except Exception as e:
+        return f"Error creating tool: {e}"
+
+
 def register_builtin_tools():
     """Register all built-in tools with the registry."""
     from base import ToolRegistry
@@ -713,6 +803,7 @@ def register_builtin_tools():
         manage_blacklist,
         manage_approved,
         get_dangerous_patterns,
+        create_tool,
     ]
 
     for t in builtin_tools:

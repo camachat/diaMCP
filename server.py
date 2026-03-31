@@ -14,7 +14,7 @@ logger = logging.getLogger("diamcp")
 
 WORKSPACE_DIR = Path("/workspace")
 WORKSPACE_TOOLS_DIR = WORKSPACE_DIR / "tools"
-APP_DIR = Path("/app")
+APP_DIR = Path(__file__).parent
 APP_TOOLS_DIR = APP_DIR / "tools"
 APP_EXAMPLES_DIR = APP_DIR / "examples"
 
@@ -134,6 +134,8 @@ def discover_tools_from_dir(tools_dir: Path, source_name: str):
     for filepath in tools_dir.glob("*.py"):
         if filepath.name.startswith("_"):
             continue
+        if filepath.name == "base.py":
+            continue
 
         try:
             import importlib.util
@@ -162,6 +164,7 @@ def register_tools():
             mcp.add_tool(
                 tool_def.func, name=tool_def.name, description=tool_def.description
             )
+            logger.info(f"Registered tool: {tool_def.name}")
         except Exception as e:
             logger.error(f"Failed to register tool {tool_def.name}: {e}")
 

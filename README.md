@@ -85,7 +85,7 @@ See diaMCP in action with the llama.cpp webui:
 
 ## Features
 
-- **20+ Built-in Tools**: File operations, web search, git, shell, code execution, and more
+- **21+ Built-in Tools**: File operations, web search, git, shell, code execution, and more
 - **Dangerous Command Blocking**: `run_command` blocks dangerous patterns (rm -rf, dd, mkfs, etc.)
 - **Elicitation Support**: Confirmation prompts for risky commands (works with MCP clients that support it)
 - **Dynamic Tool Discovery**: Drop Python files into `./workspace/tools/` or use built-in examples
@@ -144,6 +144,13 @@ See diaMCP in action with the llama.cpp webui:
 | `greeting` | Generate personalized greetings |
 | `add_numbers` | Add two numbers |
 | `word_reverser` | Reverse words in a sentence |
+
+### Meta Tools
+| Tool | Description |
+|------|-------------|
+| `create_tool` | Create a new tool dynamically (for LLMs) |
+
+See [AGENTS.md](AGENTS.md) for detailed documentation on creating tools.
 
 ## MCP Resources
 
