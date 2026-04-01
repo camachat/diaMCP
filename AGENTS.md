@@ -12,8 +12,42 @@ You can create your own tools dynamically using the `create_tool` function. When
 - `name` - Tool name (lowercase, underscores, starts with letter)
 - `description` - What the tool does
 - `schema` - JSON schema for parameters (as JSON string)
-- `code` - Python function body
+- `code` - Python function body (MUST follow the template below)
 - `requirements` - Optional. Any new Python package dependencies (e.g., `yfinance>=1.2.0`)
+
+### ⚠️ STRICT RULES FOR CODE PARAMETER
+
+The `code` parameter MUST follow this exact template:
+
+```python
+# 1. Imports FIRST (before anything else)
+import requests
+import json
+
+# 2. Then the function with @tool decorator
+def my_tool(param1: str, param2: int = 10) -> str:
+    """
+    Brief description of what this tool does.
+    
+    Args:
+        param1: Description of first parameter
+        param2: Description of second parameter (default: 10)
+    
+    Returns:
+        Description of what is returned
+    """
+    try:
+        # Your code here
+        return "success"
+    except Exception as e:
+        return f"Error: {str(e)}"
+```
+
+**CRITICAL RULES:**
+1. **ALL imports MUST be at the very top** - before the `@tool` decorator
+2. **The function name MUST match the tool name**
+3. **The `@tool` decorator and function definition MUST be together** - decorator on line above function
+4. **Schema must have proper bracket matching** - verify all `{}` and `[]` are closed
 
 ### Example: Creating a Simple Tool
 
@@ -30,8 +64,18 @@ create_tool(
         },
         "required": ["city"]
     }''',
-    code='''def get_weather(city: str) -> str:
-    import httpx
+    code='''import httpx
+
+def get_weather(city: str) -> str:
+    """
+    Get current weather for a city from the weather API.
+    
+    Args:
+        city: The city name to get weather for
+    
+    Returns:
+        JSON weather data or error message
+    """
     try:
         response = httpx.get(f"https://api.weather.com/current?city={city}", timeout=10)
         return response.json()

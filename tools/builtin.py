@@ -726,6 +726,7 @@ def create_tool(
     """Create a new MCP tool by writing a Python file."""
     import json
     import re
+    import ast
 
     if not re.match(r"^[a-z][a-z0-9_]*$", name):
         return f"Error: Invalid tool name '{name}'. Use lowercase letters, numbers, and underscores only. Must start with a letter."
@@ -738,22 +739,55 @@ def create_tool(
     except json.JSONDecodeError as e:
         return f"Error: Invalid JSON schema: {e}"
 
+    try:
+        ast.parse(code)
+    except SyntaxError as e:
+        return f"Error: Invalid Python code: {e.msg} at line {e.lineno}"
+
+    import_lines = [
+        l.strip()
+        for l in code.split("\n")
+        if l.strip().startswith("import ") or l.strip().startswith("from ")
+    ]
+    func_match = re.search(r"^def\s+\w+\s*\(", code, re.MULTILINE)
+    if import_lines and func_match:
+        first_import_line = min(
+            code.split("\n").index(l)
+            for l in code.split("\n")
+            if l.strip().startswith("import ") or l.strip().startswith("from ")
+        )
+        first_func_line = code.split("\n").index(
+            next(l for l in code.split("\n") if re.match(r"^\s*def\s+\w+\s*\(", l))
+        )
+        if first_import_line > first_func_line:
+            return "Error: All 'import' statements must come BEFORE the function definition. Place imports at the very top of the code parameter."
+
+    code_without_imports = "\n".join(
+        l
+        for l in code.split("\n")
+        if not (l.strip().startswith("import ") or l.strip().startswith("from "))
+    ).strip()
+
     safe_name = name.strip().lower()
     filename = f"/workspace/tools/{safe_name}_tool.py"
 
     try:
         os.makedirs("/workspace/tools", exist_ok=True)
 
+        all_imports = ""
+        if import_lines:
+            all_imports = "\n".join(import_lines) + "\n"
+
         file_content = f'''"""Auto-generated tool: {safe_name}"""
 
-from base import tool
+{all_imports}from base import tool
 
 @tool(
     name="{safe_name}",
     description={json.dumps(description)},
     schema={json.dumps(parsed_schema, indent=8)}
 )
-{code}
+{code_without_imports}
 '''
         with open(filename, "w") as f:
             f.write(file_content)
