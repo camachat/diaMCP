@@ -12,16 +12,11 @@ from mcp.server.fastmcp import FastMCP
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("diamcp")
 
-WORKSPACE_DIR = Path("/workspace")
-WORKSPACE_TOOLS_DIR = WORKSPACE_DIR / "tools"
 APP_DIR = Path(__file__).parent
 APP_TOOLS_DIR = APP_DIR / "tools"
-APP_EXAMPLES_DIR = APP_DIR / "examples"
 
 sys.path.insert(0, str(APP_DIR))
 sys.path.insert(0, str(APP_TOOLS_DIR))
-sys.path.insert(0, str(WORKSPACE_DIR))
-sys.path.insert(0, str(WORKSPACE_TOOLS_DIR))
 
 from base import ToolRegistry
 from builtin import register_builtin_tools
@@ -52,24 +47,6 @@ def get_system_resource() -> str:
     return "\n".join(f"{k}: {v}" for k, v in info.items())
 
 
-@mcp.resource("diamcp://workspace/summary")
-def get_workspace_summary() -> str:
-    """Summary of workspace contents."""
-    if not WORKSPACE_DIR.exists():
-        return "Workspace is empty"
-
-    items = []
-    for item in sorted(WORKSPACE_DIR.iterdir())[:20]:
-        suffix = "/" if item.is_dir() else ""
-        items.append(f"{item.name}{suffix}")
-
-    total = sum(1 for _ in WORKSPACE_DIR.rglob("*") if _.is_file())
-    summary = f"Workspace root contents ({total} total files):\n" + "\n".join(items)
-    if total > 20:
-        summary += f"\n... and {total - 20} more files"
-    return summary
-
-
 @mcp.resource("diamcp://tools/list")
 def get_tools_list() -> str:
     """List of all available tools with descriptions."""
@@ -91,38 +68,16 @@ def startup_context() -> str:
     )
 
 
-@mcp.prompt(title="File Search First")
-def file_search_first() -> str:
-    """Guide for effective file searching."""
-    return (
-        "Before reading files, use search_files or list_directory to understand the project structure. "
-        "Use grep to find specific content across files."
-    )
-
-
 @mcp.prompt(title="Web Research")
 def web_research() -> str:
     """Guide for web research tasks."""
     return (
         "For web research tasks:\n"
-        "1. Use web_search to find relevant pages\n"
+        "1. Use web_search_brave and web_search_ddg to find relevant pages\n"
         "2. Use web_fetch to extract content from promising URLs\n"
         "3. Use calculate for any math needed\n"
         "4. Summarize findings for the user\n"
         "5. Format beautifully, use markdown, cite sources with links"
-    )
-
-
-@mcp.prompt(title="Code Review")
-def code_review() -> str:
-    """Guide for reviewing code."""
-    return (
-        "When asked to review code:\n"
-        "1. Use search_files to find relevant code files\n"
-        "2. Use read_file to examine the code\n"
-        "3. Use grep to find specific patterns or issues\n"
-        "4. Use count_lines to understand project size\n"
-        "5. Provide constructive feedback"
     )
 
 
@@ -153,8 +108,6 @@ def discover_tools_from_dir(tools_dir: Path, source_name: str):
 def discover_user_tools():
     """Discover and load Python tools from tools/ and workspace directories."""
     discover_tools_from_dir(APP_TOOLS_DIR, "tools")
-    discover_tools_from_dir(APP_EXAMPLES_DIR, "examples")
-    discover_tools_from_dir(WORKSPACE_TOOLS_DIR, "workspace/tools")
 
 
 def register_tools():
@@ -176,8 +129,6 @@ def main():
     register_tools()
 
     logger.info(f"diaMCP Server starting on 0.0.0.0:8000")
-    logger.info(f"Workspace: {WORKSPACE_DIR}")
-    logger.info(f"Tools directory: {WORKSPACE_TOOLS_DIR}")
     logger.info(f"Tools loaded: {len(ToolRegistry.get_all())}")
 
     mcp.run(transport="streamable-http")
