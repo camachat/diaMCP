@@ -296,6 +296,7 @@ async def search_books(
     return list(results)
 
 @tool(
+    name="extract_content",
     description="Extract content from a URL.",
     schema={
         "type": "object",
